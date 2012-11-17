@@ -30,7 +30,7 @@ Library
                        cereal,
                        bytestring,
                        conduit >= 0.5
-
+  Hs-Source-Dirs:      src
   Ghc-Options:         -Wall -fwarn-incomplete-patterns -O3
 
 Executable nbd-demo-server
@@ -47,4 +47,5 @@ Executable nbd-demo-server
                        conduit >= 0.5,
                        network-conduit >= 0.6,
                        nbd
+  Hs-Source-Dirs:      bin
   Ghc-Options:         -Wall -fwarn-incomplete-patterns -O3 -rtsopts -threaded
