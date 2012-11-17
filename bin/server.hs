@@ -22,7 +22,7 @@ module Main (
       main
     ) where
 
-import Data.Conduit
+import Data.Conduit hiding (Flush)
 import Data.Conduit.Network
 
 import qualified Data.Map as Map
@@ -53,20 +53,19 @@ import qualified System.Posix.IO as IO
 import System.Posix.Types (Fd)
 import System.Posix.IO.ByteString.Lazy (fdPread)
 
-import Network.NBD.Types as T
+import Network.NBD as N
 import Network.NBD.Server as S
-import Network.NBD.Constants as C
 
 data Export = Export { exportHandle :: Fd
-                     , exportSize :: T.ExportSize
+                     , exportSize :: N.ExportSize
                      }
   deriving (Show)
 
-data ServerError = InvalidExport T.ExportName
+data ServerError = InvalidExport N.ExportName
   deriving (Show, Typeable)
 instance Exception ServerError
 
-application :: MonadIO m => Map.Map T.ExportName Export -> AppData m -> m ()
+application :: MonadIO m => Map.Map N.ExportName Export -> AppData m -> m ()
 application exports dat = appSource dat $= handler $$ appSink dat
   where
     handler = do
@@ -78,7 +77,7 @@ application exports dat = appSource dat $= handler $$ appSink dat
 
         let export = (Map.!) exports target
 
-        sendExportInformation (exportSize export) flags
+        S.sendExportInformation (exportSize export) flags
 
         loop (exportHandle export) (exportSize export)
 
@@ -100,14 +99,14 @@ application exports dat = appSource dat $= handler $$ appSink dat
                                 Right block -> sendReplyData h block
                     loop'
                 Write h _ _ _ -> sendError h ePERM >> loop'
-                T.Disconnect _ -> return ()
-                T.Flush h _ -> sendError h eOPNOTSUPP >> loop'
-                T.Trim h _ _ _ -> sendError h eOPNOTSUPP >> loop'
-                T.UnknownCommand{} -> do
+                Disconnect _ -> return ()
+                Flush h _ -> sendError h eOPNOTSUPP >> loop'
+                Trim h _ _ _ -> sendError h eOPNOTSUPP >> loop'
+                UnknownCommand{} -> do
                     liftIO $ putStrLn $ "Unknown command: " ++ show req
                     loop'
 
-    flags = [C.HasFlags, C.ReadOnly]
+    flags = [HasFlags, ReadOnly]
 
 main :: IO ()
 main = runResourceT $ do
@@ -131,4 +130,4 @@ main = runResourceT $ do
     void $ resourceForkIO $ runTCPServer settings (application exportsMap)
     forever $ liftIO $ threadDelay 10000000
   where
-    settings = serverSettings C.nBD_DEFAULT_PORT HostIPv4
+    settings = serverSettings nBD_DEFAULT_PORT HostIPv4

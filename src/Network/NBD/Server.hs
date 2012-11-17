@@ -26,6 +26,9 @@ module Network.NBD.Server (
     , sendReply
     , sendReplyData
     , sendError
+
+    , Handle
+    , Command(..)
     ) where
 
 import Data.Bits
