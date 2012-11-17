@@ -1,0 +1,46 @@
+Name:                nbd
+Version:             0.1.0.0
+Synopsis:            A Haskell library to implement NBD (Network Block Device) servers
+-- Description:         
+Author:              Nicolas Trangez
+Maintainer:          ikke@nicolast.be
+Homepage:            https://github.com/NicolasT/nbd
+
+License:             LGPL-2.1
+License-File:        LICENSE
+Copyright:           Copyright (c) 2012, Nicolas Trangez
+
+Category:            Network
+
+Build-Type:          Simple
+Cabal-Version:       >=1.8
+
+Library
+  Exposed-Modules:     Network.NBD.Server
+                       Network.NBD.Types
+                       Network.NBD.Constants
+  -- Other-Modules:       
+  Build-Depends:       base >= 4,
+                       transformers,
+                       text,
+                       cereal,
+                       bytestring,
+                       conduit >= 0.5
+
+  Ghc-Options:         -Wall -fwarn-incomplete-patterns -O3
+
+Executable nbd-demo-server
+  Main-Is:             server.hs
+  Build-Depends:       base >= 4,
+                       unix,
+                       containers,
+                       transformers,
+                       text,
+                       resourcet,
+                       cereal,
+                       bytestring,
+                       unix-bytestring,
+                       conduit >= 0.5,
+                       network-conduit >= 0.6,
+                       nbd
+  Ghc-Options:         -Wall -fwarn-incomplete-patterns -O3 -rtsopts -threaded
