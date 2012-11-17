@@ -40,6 +40,7 @@ import Data.Word
 import Data.ByteString.Char8 ()
 import qualified Data.ByteString.Char8 as BS8
 
+-- | The default (IANA-assigned) port for NBD
 nBD_DEFAULT_PORT :: Int
 nBD_DEFAULT_PORT = 10809
 
@@ -105,12 +106,13 @@ instance Enum NbdReply where
         ErrorPlatform -> 4 .|. nBD_REP_FLAG_ERROR
 
 
-data NbdExportFlag = HasFlags
-                   | ReadOnly
-                   | SendFlush
-                   | SendFua
-                   | Rotational
-                   | SendTrim
+-- | Flags of a single export
+data NbdExportFlag = HasFlags    -- ^ Should always be set
+                   | ReadOnly    -- ^ The export is read-only
+                   | SendFlush   -- ^ The server supports NBD_CMD_FLUSH commands
+                   | SendFua     -- ^ The server supports the NBD_CMD_FLAG_FUA flag
+                   | Rotational  -- ^ The client should schedule I/O accesses as for a rotational medium
+                   | SendTrim    -- ^ The server supports NBD_CMD_TRIM commands
   deriving (Show, Eq)
 
 instance Enum NbdExportFlag where
@@ -155,7 +157,8 @@ instance Enum NbdClientProtocolFlag where
 nBD_CMD_MASK_COMMAND :: Word32
 nBD_CMD_MASK_COMMAND = 0x0000ffff
 
-data NbdCommandFlag = ForceUnitAccess
+-- | Flags set on NBD commands
+data NbdCommandFlag = ForceUnitAccess  -- ^ Force Unit Access on NBD_CMD_WRITE
   deriving (Show, Eq)
 
 instance Enum NbdCommandFlag where

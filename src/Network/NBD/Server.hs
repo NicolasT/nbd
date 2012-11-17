@@ -54,7 +54,10 @@ import Foreign.Storable (Storable, sizeOf)
 import Network.NBD.Types
 import Network.NBD.Constants
 
-negotiateNewstyle :: MonadIO m => Maybe [ExportName]
+-- | Run the new-style protocol negotiation handshake with a client
+-- The result will be the name of the export the client wants to connect
+-- to.
+negotiateNewstyle :: MonadIO m => Maybe [ExportName]  -- ^ An optional list of export names. If 'Nothing', export listing support will be disabled.
                                -> Pipe BS.ByteString BS.ByteString BS.ByteString () m ExportName
 negotiateNewstyle exports = do
     yield newstylePrelude
@@ -121,8 +124,9 @@ negotiateNewstyle exports = do
         {-# INLINE smallflags #-}
     {-# INLINE newstylePrelude #-}
 
-sendExportInformation :: Monad m => ExportSize
-                                 -> [NbdExportFlag]
+-- | After negotiation, send information about the selected export
+sendExportInformation :: Monad m => ExportSize      -- ^ Size of the selected export
+                                 -> [NbdExportFlag] -- ^ Flags set for the export
                                  -> Pipe l i BS.ByteString u m ()
 sendExportInformation len flags = do
     sendWord64 len
@@ -163,6 +167,7 @@ sendWord64 :: Monad m => Word64
 sendWord64 = sendValue putWord64be
 {-# INLINE sendWord64 #-}
 
+-- | Receive a single command from the client
 getCommand :: MonadIO m => Pipe BS.ByteString BS.ByteString o u m Command
 getCommand = do
     -- TODO Replace these recv's with a single Serialize action which pulls
@@ -194,6 +199,7 @@ getCommand = do
         4 -> return $ Trim handle offset len flags
         _ -> return $ UnknownCommand cmd handle offset len flags
 
+-- | Send a reply to the client indicating success for the given command handle
 sendReply :: Monad m => Handle
                      -> Pipe l i BS.ByteString u m ()
 sendReply h =
@@ -203,6 +209,9 @@ sendReply h =
         put h
 {-# INLINE sendReply #-}
 
+-- | Send a reply to the client indicating success for the given command handle.
+-- The provided data will be passed along (e.g. in response to
+-- a 'Network.NBD.Types.Read' command).
 sendReplyData :: Monad m => Handle
                          -> LBS.ByteString
                          -> Pipe l i BS.ByteString u m ()
@@ -214,6 +223,7 @@ sendReplyData h d =
         putLazyByteString d
 {-# INLINE sendReplyData #-}
 
+-- | Send an error reply to the client for the given handle
 sendError :: Monad m => Handle
                      -> Errno
                      -> Pipe l i BS.ByteString u m ()
