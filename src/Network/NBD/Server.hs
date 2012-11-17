@@ -202,11 +202,7 @@ getCommand = do
 -- | Send a reply to the client indicating success for the given command handle
 sendReply :: Monad m => Handle
                      -> Pipe l i BS.ByteString u m ()
-sendReply h =
-    yield $ runPut $ do
-        putWord32be nBD_REPLY_MAGIC
-        putWord32be 0
-        put h
+sendReply h = sendReplyData h LBS.empty
 {-# INLINE sendReply #-}
 
 -- | Send a reply to the client indicating success for the given command handle.
