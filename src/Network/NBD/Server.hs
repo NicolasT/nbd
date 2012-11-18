@@ -44,6 +44,8 @@ import qualified Data.ByteString.Lazy as LBS
 
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 
+import Control.Applicative
+
 import Control.Exception.Base (throwIO)
 
 import Control.Monad (forM_, when)
@@ -62,22 +64,19 @@ negotiateNewstyle :: MonadIO m => Maybe [ExportName]  -- ^ An optional list of e
 negotiateNewstyle exports = do
     yield newstylePrelude
 
-    clientFlags <- recvWord32
+    clientFlags <- sinkGet' getWord32be
     when (clientFlags /= 0 && clientFlags /= 1) $
         liftIO $ throwIO $ InvalidClientFlags clientFlags
 
     handleOptions
   where
     handleOptions = do
-        magic <- recvWord64
+        magic <- sinkGet' getWord64be
         when (magic /= nBD_OPTS_MAGIC) $
             liftIO $ throwIO $ InvalidMagic "option" magic
 
-        cmd <- recvWord32
-        len <- recvWord32
-        dat <- if len /= 0
-                   then CB.take $ fromIntegral len
-                   else return LBS.empty
+        (cmd, len) <- sinkGet' $ (,) <$> getWord32be <*> getWord32be
+        dat <- safeRead len
 
         case toEnum $ fromIntegral cmd of
             UnknownOption -> do
@@ -128,10 +127,10 @@ negotiateNewstyle exports = do
 sendExportInformation :: Monad m => ExportSize      -- ^ Size of the selected export
                                  -> [NbdExportFlag] -- ^ Flags set for the export
                                  -> Pipe l i BS.ByteString u m ()
-sendExportInformation len flags = do
-    sendWord64 len
-    sendWord16 flags'
-    yield zeros
+sendExportInformation len flags = sourcePut $ do
+    putWord64be len
+    putWord16be flags'
+    putByteString zeros
   where
     zeros = BS.replicate 124 0
     flags' = foldr (\f a -> a .|. fromIntegral (fromEnum f)) 0 flags
@@ -145,21 +144,6 @@ sinkGet' g = do
         Left s -> liftIO $ throwIO $ ParseFailure s
 {-# INLINE sinkGet' #-}
 
-recvWord32 :: MonadIO m => GLSink BS.ByteString m Word32
-recvWord32 = sinkGet' getWord32be
-{-# INLINE recvWord32 #-}
-recvWord64 :: MonadIO m => GLSink BS.ByteString m Word64
-recvWord64 = sinkGet' getWord64be
-{-# INLINE recvWord64 #-}
-
-sendWord16 :: Monad m => Word16
-                      -> Pipe l i BS.ByteString u m ()
-sendWord16 = sourcePut . putWord16be
-{-# INLINE sendWord16 #-}
-sendWord64 :: Monad m => Word64
-                      -> Pipe l i BS.ByteString u m ()
-sendWord64 = sourcePut . putWord64be
-{-# INLINE sendWord64 #-}
 
 -- | Receive a single command from the client
 getCommand :: MonadIO m => Pipe BS.ByteString BS.ByteString o u m Command
@@ -168,7 +152,7 @@ getCommand = do
     -- larger chunks from the source
     -- I.e. create an updated version of cereal-conduit and use it
     -- accordingly.
-    !magic <- recvWord32
+    !magic <- sinkGet' getWord32be
     when (magic /= nBD_REQUEST_MAGIC) $
         liftIO $ throwIO $ InvalidMagic "request" (fromIntegral magic)
 
@@ -186,9 +170,7 @@ getCommand = do
     case cmd of
         0 -> return $ Read handle offset len flags
         1 -> do
-            dat <- if len /= 0
-                       then CB.take $ fromIntegral len
-                       else return LBS.empty
+            dat <- safeRead len
             return $ Write handle offset dat flags
         2 -> return $ Disconnect flags
         3 -> return $ Network.NBD.Types.Flush handle flags
@@ -225,3 +207,10 @@ sendError h (Errno e) =
         putWord32be nBD_REPLY_MAGIC
         putWord32be $ fromIntegral e
         put h
+
+
+safeRead :: Monad m => Word32 -> GLSink BS.ByteString m LBS.ByteString
+safeRead len
+    | len == 0 = return LBS.empty
+    | otherwise = CB.take $ fromIntegral len
+{-# INLINE safeRead #-}
