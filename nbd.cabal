@@ -24,7 +24,9 @@ Library
                        Network.NBD.Server
   Other-Modules:       Network.NBD.Types
                        Network.NBD.Constants
+                       Data.Conduit.Cereal
   Build-Depends:       base >= 4 && < 5,
+                       mtl,
                        transformers,
                        text,
                        cereal,
