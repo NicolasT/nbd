@@ -17,7 +17,7 @@
  - Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  -}
 
-{-# LANGUAGE NoMonomorphismRestriction, BangPatterns #-}
+{-# LANGUAGE NoMonomorphismRestriction, BangPatterns, Rank2Types #-}
 
 module Network.NBD.Server (
       negotiateNewstyle
@@ -37,6 +37,7 @@ import Data.Serialize
 
 import Data.Conduit
 import Data.Conduit.Binary as CB
+import Data.Conduit.Cereal
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
@@ -49,7 +50,6 @@ import Control.Monad (forM_, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
 import Foreign.C.Error (Errno(Errno))
-import Foreign.Storable (Storable, sizeOf)
 
 import Network.NBD.Types
 import Network.NBD.Constants
@@ -107,7 +107,7 @@ negotiateNewstyle exports = do
             sendOptionReply cmd Ack BS.empty
 
     sendOptionReply cmd typ dat =
-        yield $ runPut $ do
+        sourcePut $ do
             putWord64be nBD_REP_MAGIC
             putWord32be cmd
             putWord32be $ fromIntegral $ fromEnum typ
@@ -136,35 +136,29 @@ sendExportInformation len flags = do
     zeros = BS.replicate 124 0
     flags' = foldr (\f a -> a .|. fromIntegral (fromEnum f)) 0 flags
 
-recvValue :: (Serialize r, Storable r, MonadIO m) => Get r
-                                                  -> r
-                                                  -> Pipe BS.ByteString BS.ByteString o u m r
-recvValue parser r = do
-    bytes <- CB.take $ sizeOf r
-    case runGetLazy parser bytes of
-        Right n -> return n
-        Left s -> liftIO $ throwIO $ ParseFailure s
-{-# INLINE recvValue #-}
 
-recvWord32 :: MonadIO m => Pipe BS.ByteString BS.ByteString o u m Word32
-recvWord32 = recvValue getWord32be (undefined :: Word32)
+sinkGet' :: MonadIO m => Get a -> GLSink BS.ByteString m a
+sinkGet' g = do
+    r <- sinkGet g
+    case r of
+        Right v -> return v
+        Left s -> liftIO $ throwIO $ ParseFailure s
+{-# INLINE sinkGet' #-}
+
+recvWord32 :: MonadIO m => GLSink BS.ByteString m Word32
+recvWord32 = sinkGet' getWord32be
 {-# INLINE recvWord32 #-}
-recvWord64 :: MonadIO m => Pipe BS.ByteString BS.ByteString o u m Word64
-recvWord64 = recvValue getWord64be (undefined :: Word64)
+recvWord64 :: MonadIO m => GLSink BS.ByteString m Word64
+recvWord64 = sinkGet' getWord64be
 {-# INLINE recvWord64 #-}
 
-sendValue :: Monad m => (a -> Put)
-                     -> a
-                     -> Pipe l i BS.ByteString u m ()
-sendValue putter = yield . runPut . putter
-{-# INLINE sendValue #-}
 sendWord16 :: Monad m => Word16
                       -> Pipe l i BS.ByteString u m ()
-sendWord16 = sendValue putWord16be
+sendWord16 = sourcePut . putWord16be
 {-# INLINE sendWord16 #-}
 sendWord64 :: Monad m => Word64
                       -> Pipe l i BS.ByteString u m ()
-sendWord64 = sendValue putWord64be
+sendWord64 = sourcePut . putWord64be
 {-# INLINE sendWord64 #-}
 
 -- | Receive a single command from the client
@@ -178,10 +172,12 @@ getCommand = do
     when (magic /= nBD_REQUEST_MAGIC) $
         liftIO $ throwIO $ InvalidMagic "request" (fromIntegral magic)
 
-    !typ <- recvWord32
-    !handle <- Handle `fmap` recvWord64
-    !offset <- recvWord64
-    !len <- recvWord32
+    (typ, handle, offset, len) <- sinkGet' $ do
+        !typ <- getWord32be
+        !handle <- Handle `fmap` get
+        !offset <- getWord64be
+        !len <- getWord32be
+        return (typ, handle, offset, len)
 
     let cmd = typ .&. nBD_CMD_MASK_COMMAND
         -- TODO Remove hard-coded list
@@ -212,7 +208,8 @@ sendReplyData :: Monad m => Handle
                          -> LBS.ByteString
                          -> Pipe l i BS.ByteString u m ()
 sendReplyData h d =
-    yield $ runPut $ do
+    -- I'd love to use sourcePutLazy here, but that ruins performance
+    sourcePut $ do
         putWord32be nBD_REPLY_MAGIC
         putWord32be 0
         put h
@@ -224,7 +221,7 @@ sendError :: Monad m => Handle
                      -> Errno
                      -> Pipe l i BS.ByteString u m ()
 sendError h (Errno e) =
-    yield $ runPut $ do
+    sourcePut $ do
         putWord32be nBD_REPLY_MAGIC
         putWord32be $ fromIntegral e
         put h
