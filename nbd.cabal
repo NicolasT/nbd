@@ -21,8 +21,10 @@ Source-Repository head
 
 Library
   Exposed-Modules:     Network.NBD
+                       Network.NBD.Client
                        Network.NBD.Server
   Other-Modules:       Network.NBD.Types
+                       Network.NBD.Utils
                        Network.NBD.Constants
                        Data.Conduit.Cereal
   Build-Depends:       base >= 4 && < 5,
@@ -51,3 +53,30 @@ Executable nbd-demo-server
                        nbd
   Hs-Source-Dirs:      bin
   Ghc-Options:         -Wall -fwarn-incomplete-patterns -O3 -rtsopts -threaded
+
+Executable nbd-demo-client
+  Main-Is:             client.hs
+  Build-Depends:       base >= 4 && < 5,
+                       transformers,
+                       text,
+                       conduit >= 0.5,
+                       network-conduit >= 0.6,
+                       nbd
+  Hs-Source-Dirs:      bin
+  Ghc-Options:         -Wall -fwarn-incomplete-patterns -O3 -rtsopts -threaded
+
+Test-suite test-negotiate
+  Type:                exitcode-stdio-1.0
+  Main-is:             test_negotiate.hs
+  Build-Depends:       base >= 4 && < 5,
+                       mtl,
+                       transformers,
+                       containers,
+                       text,
+                       bytestring,
+                       conduit >= 0.5,
+                       stm,
+                       stm-conduit,
+                       nbd
+  Hs-Source-Dirs:      test
+  Ghc-Options:         -Wall -fwarn-incomplete-patterns -rtsopts -threaded

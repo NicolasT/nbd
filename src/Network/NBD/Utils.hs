@@ -17,19 +17,27 @@
  - Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  -}
 
-module Network.NBD (
-      nBD_DEFAULT_PORT
-    , NbdExportFlag(..)
-    , NbdCommandFlag(..)
+{-# LANGUAGE Rank2Types #-}
 
-    , ExportName
-    , ExportSize
-    , Offset
-    , Length
-    , ProtocolException(..)
-
-    , Handle
+module Network.NBD.Utils (
+      sinkGet'
     ) where
 
-import Network.NBD.Constants (nBD_DEFAULT_PORT, NbdExportFlag(..), NbdCommandFlag(..))
-import Network.NBD.Types (ExportName, ExportSize, Handle, Offset, Length, ProtocolException(..))
+import Control.Exception.Base (throwIO)
+import Control.Monad.IO.Class (MonadIO(liftIO))
+
+import Data.Conduit (GLSink)
+import Data.Conduit.Cereal (sinkGet)
+
+import Data.Serialize (Get)
+import Data.ByteString (ByteString)
+
+import Network.NBD.Types (ProtocolException(ParseFailure))
+
+sinkGet' :: MonadIO m => Get a -> GLSink ByteString m a
+sinkGet' g = do
+    r <- sinkGet g
+    case r of
+        Right v -> return v
+        Left s -> liftIO $ throwIO $ ParseFailure s
+{-# INLINE sinkGet' #-}

@@ -23,6 +23,7 @@ module Network.NBD.Constants (
     , nBD_CLISERV_MAGIC
     , nBD_OPTS_MAGIC
     , nBD_REP_MAGIC
+    , nBD_REP_FLAG_ERROR
     , nBD_REQUEST_MAGIC
     , nBD_REPLY_MAGIC
     , NbdOption(..)

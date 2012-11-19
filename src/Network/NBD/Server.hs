@@ -27,7 +27,6 @@ module Network.NBD.Server (
     , sendReplyData
     , sendError
 
-    , Handle
     , Command(..)
     ) where
 
@@ -54,6 +53,7 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Foreign.C.Error (Errno(Errno))
 
 import Network.NBD.Types
+import Network.NBD.Utils
 import Network.NBD.Constants
 
 -- | Run the new-style protocol negotiation handshake with a client
@@ -136,22 +136,9 @@ sendExportInformation len flags = sourcePut $ do
     flags' = foldr (\f a -> a .|. fromIntegral (fromEnum f)) 0 flags
 
 
-sinkGet' :: MonadIO m => Get a -> GLSink BS.ByteString m a
-sinkGet' g = do
-    r <- sinkGet g
-    case r of
-        Right v -> return v
-        Left s -> liftIO $ throwIO $ ParseFailure s
-{-# INLINE sinkGet' #-}
-
-
 -- | Receive a single command from the client
 getCommand :: MonadIO m => Pipe BS.ByteString BS.ByteString o u m Command
 getCommand = do
-    -- TODO Replace these recv's with a single Serialize action which pulls
-    -- larger chunks from the source
-    -- I.e. create an updated version of cereal-conduit and use it
-    -- accordingly.
     !magic <- sinkGet' getWord32be
     when (magic /= nBD_REQUEST_MAGIC) $
         liftIO $ throwIO $ InvalidMagic "request" (fromIntegral magic)

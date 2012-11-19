@@ -130,4 +130,4 @@ main = runResourceT $ do
     void $ resourceForkIO $ runTCPServer settings (application exportsMap)
     forever $ liftIO $ threadDelay 10000000
   where
-    settings = serverSettings nBD_DEFAULT_PORT HostIPv4
+    settings = serverSettings nBD_DEFAULT_PORT HostAny
