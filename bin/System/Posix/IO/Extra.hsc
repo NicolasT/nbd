@@ -25,7 +25,15 @@ module System.Posix.IO.Extra (
     , pwrite
     , pwriteAll
     , pwriteAllLazy
+
+    , fALLOC_FL_KEEP_SIZE
+    , fALLOC_FL_PUNCH_HOLE
+    , fallocate
     ) where
+
+#define _GNU_SRC
+#include <fcntl.h>
+#include <linux/falloc.h>
 
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString as BS
@@ -33,7 +41,7 @@ import qualified Data.ByteString as BS
 import System.Posix.Types (Fd(Fd), CSsize(..), COff(..))
 
 import Foreign.Ptr (Ptr)
-import Foreign.C.Error (throwErrnoIfMinus1_, throwErrnoIfMinus1Retry)
+import Foreign.C.Error (throwErrnoIfMinus1_, throwErrnoIfMinus1Retry, throwErrnoIfMinus1Retry_)
 import Foreign.C.Types (CInt(..), CChar(..), CSize(..))
 
 foreign import ccall "fsync"
@@ -71,3 +79,16 @@ pwriteAllLazy fd bs = loop (LBS.toChunks bs)
         [] -> return ()
         (x:xs) -> pwriteAll fd x off >> loop xs (off + fromIntegral (BS.length x))
 
+
+foreign import ccall "fallocate"
+    c_fallocate :: CInt -> CInt -> COff -> COff -> IO CInt
+
+fALLOC_FL_KEEP_SIZE :: CInt
+fALLOC_FL_KEEP_SIZE = #const FALLOC_FL_KEEP_SIZE
+
+fALLOC_FL_PUNCH_HOLE :: CInt
+fALLOC_FL_PUNCH_HOLE = #const FALLOC_FL_PUNCH_HOLE
+
+fallocate :: Fd -> CInt -> COff -> COff -> IO ()
+fallocate (Fd fd) mode offset len =
+    throwErrnoIfMinus1Retry_ "fallocate" $ c_fallocate fd mode offset len

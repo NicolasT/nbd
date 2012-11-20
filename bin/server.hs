@@ -22,6 +22,8 @@ module Main (
       main
     ) where
 
+import Data.Bits
+
 import Data.Conduit hiding (Flush)
 import Data.Conduit.Network
 
@@ -42,7 +44,7 @@ import GHC.IO.Exception (ioe_errno)
 import Control.Monad (forever, forM, void, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
-import Foreign.C.Error (Errno(Errno), eINVAL, eOPNOTSUPP, getErrno)
+import Foreign.C.Error (Errno(Errno), eINVAL, getErrno)
 
 import System.IO (hPutStrLn, stderr)
 import System.Exit (exitFailure)
@@ -54,7 +56,7 @@ import qualified System.Posix.IO as IO
 import System.Posix.Types (Fd)
 import System.Posix.IO.ByteString.Lazy (fdPread)
 
-import System.Posix.IO.Extra (fsync, fdatasync, pwriteAllLazy)
+import System.Posix.IO.Extra (fALLOC_FL_PUNCH_HOLE, fALLOC_FL_KEEP_SIZE, fallocate, fdatasync, fsync, pwriteAllLazy)
 
 import Network.NBD as N
 import Network.NBD.Server as S
@@ -133,12 +135,21 @@ application exports dat = appSource dat $= handler $$ appSink dat
                         (fsync handle)
                         (\() -> sendReply h)
                     return Loop
-                Trim h _ _ _ -> sendError h eOPNOTSUPP >> return Loop
+                Trim h o l f -> {-# SCC "handleTrim" #-} withBoundsCheck h o l $ do
+                    handleErrno h
+                        (do
+                            fallocate handle
+                                (fALLOC_FL_PUNCH_HOLE .|. fALLOC_FL_KEEP_SIZE)
+                                (fromIntegral o) (fromIntegral l)
+                            when (ForceUnitAccess `elem` f) $
+                                fdatasync handle)
+                        (\() -> sendReply h)
+                    return Loop
                 UnknownCommand{} -> do
                     liftIO $ putStrLn $ "Unknown command: " ++ show req
                     return Loop
 
-    flags = [HasFlags, SendFlush, SendFua]
+    flags = [HasFlags, SendFlush, SendFua, SendTrim]
 
 main :: IO ()
 main = runResourceT $ do
