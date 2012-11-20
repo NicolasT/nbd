@@ -29,6 +29,7 @@ import qualified Data.Map as Map
 
 import Control.Monad.Trans.Resource
 
+import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text as Text
 
 import Data.Typeable (Typeable)
@@ -41,7 +42,7 @@ import GHC.IO.Exception (ioe_errno)
 import Control.Monad (forever, forM, void, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
-import Foreign.C.Error (Errno(Errno), eINVAL, eOPNOTSUPP, ePERM, getErrno)
+import Foreign.C.Error (Errno(Errno), eINVAL, eOPNOTSUPP, getErrno)
 
 import System.IO (hPutStrLn, stderr)
 import System.Exit (exitFailure)
@@ -52,6 +53,8 @@ import System.Posix.IO (closeFd, defaultFileFlags, openFd)
 import qualified System.Posix.IO as IO
 import System.Posix.Types (Fd)
 import System.Posix.IO.ByteString.Lazy (fdPread)
+
+import System.Posix.IO.Extra (fsync, fdatasync, pwriteAllLazy)
 
 import Network.NBD as N
 import Network.NBD.Server as S
@@ -64,6 +67,17 @@ data Export = Export { exportHandle :: Fd
 data ServerError = InvalidExport N.ExportName
   deriving (Show, Typeable)
 instance Exception ServerError
+
+
+data Forever a = Loop
+               | Return a
+
+forever' :: Monad m => m (Forever a) -> m a
+forever' act = loop Loop
+  where
+    loop Loop = act >>= loop
+    loop (Return a) = return a
+
 
 application :: MonadIO m => Map.Map N.ExportName Export -> AppData m -> m ()
 application exports dat = appSource dat $= handler $$ appSink dat
@@ -81,32 +95,50 @@ application exports dat = appSource dat $= handler $$ appSink dat
 
         loop (exportHandle export) (exportSize export)
 
-    loop handle size = loop'
+    loop handle size = forever' loop'
       where
+        withBoundsCheck h o l act =
+            if (o >= maxBound - fromIntegral l) || (o + fromIntegral l > size)
+                then sendError h eINVAL >> return Loop
+                else act
+
+        handleErrno h act go = do
+            res <- liftIO $ try act
+            case res of
+                Left (exc :: IOError) ->
+                    case ioe_errno exc of
+                        Nothing -> liftIO getErrno >>= sendError h
+                        Just e -> sendError h (Errno e)
+                Right val -> go val
+
         loop' = do
             req <- S.getCommand
             case req of
-                Read h o l _ -> {-# SCC "handleRead" #-} do
-                    if (o > maxBound - fromIntegral l) || (o + fromIntegral l > size)
-                        then sendError h eINVAL
-                        else do
-                            res <- liftIO $ try $ fdPread handle (fromIntegral l) (fromIntegral o)
-                            case res of
-                                Left (exc :: IOError) ->
-                                    case ioe_errno exc of
-                                        Nothing -> liftIO getErrno >>= sendError h
-                                        Just e -> sendError h (Errno e)
-                                Right block -> sendReplyData h block
-                    loop'
-                Write h _ _ _ -> sendError h ePERM >> loop'
-                Disconnect _ -> return ()
-                Flush h _ -> sendError h eOPNOTSUPP >> loop'
-                Trim h _ _ _ -> sendError h eOPNOTSUPP >> loop'
+                Read h o l _ -> {-# SCC "handleRead" #-} withBoundsCheck h o l $ do
+                    handleErrno h
+                        (fdPread handle (fromIntegral l) (fromIntegral o))
+                        (sendReplyData h)
+                    return Loop
+                Write h o d f -> {-# SCC "handleWrite" #-} withBoundsCheck h o (LBS.length d) $ do
+                    handleErrno h
+                        (do
+                            pwriteAllLazy handle d (fromIntegral o)
+                            when (ForceUnitAccess `elem` f) $
+                                fdatasync handle)
+                        (\() -> sendReply h)
+                    return Loop
+                Disconnect _ -> return $ Return ()
+                Flush h _ -> {-# SCC "handleFlush" #-} do
+                    handleErrno h
+                        (fsync handle)
+                        (\() -> sendReply h)
+                    return Loop
+                Trim h _ _ _ -> sendError h eOPNOTSUPP >> return Loop
                 UnknownCommand{} -> do
                     liftIO $ putStrLn $ "Unknown command: " ++ show req
-                    loop'
+                    return Loop
 
-    flags = [HasFlags, ReadOnly]
+    flags = [HasFlags, SendFlush, SendFua]
 
 main :: IO ()
 main = runResourceT $ do
@@ -120,7 +152,7 @@ main = runResourceT $ do
     exports <- forM args $ \fn -> do
         let fn' = Text.pack fn
         (_, fd) <- allocate
-                (liftIO $ openFd fn IO.ReadOnly Nothing defaultFileFlags)
+                (liftIO $ openFd fn IO.ReadWrite Nothing defaultFileFlags)
                 closeFd
         size <- fileSize `fmap` liftIO (getFdStatus fd)
         return (fn', Export fd (fromIntegral size))
