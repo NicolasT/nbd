@@ -28,15 +28,11 @@ module Data.Conduit.Cereal (
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as LBS
 
-import Data.Conduit hiding (leftover)
-import Data.Conduit.Util hiding (sinkState)
+import Data.Conduit
 import Data.Conduit.List (sourceList)
-import Data.Conduit.Internal (Pipe(Done, Leftover, NeedInput, PipeM))
 
 import Data.Serialize (Get, Put)
 import qualified Data.Serialize as S
-
-import Control.Monad.Trans (lift)
 
 -- | Turn a 'Put' into a 'Source', constructing a strict bytestring
 sourcePut :: Monad m => Put -> GSource m ByteString
@@ -50,34 +46,18 @@ sourcePutLazy = sourceList . LBS.toChunks . S.runPutLazy
 
 -- | Turn a 'Get' into a 'Sink'
 sinkGet :: Monad m => Get a -> GLSink ByteString m (Either String a)
-sinkGet get = sinkState state0 push close
+sinkGet = loop . S.runGetPartial
   where
-    state0 = S.runGetPartial get
-    {-# INLINE state0 #-}
-    push state input = case state input of
-        S.Fail message -> return $ StateDone (Just input) (Left message)
-        S.Partial state' -> return $ StateProcessing state'
-        S.Done result leftover -> return $ StateDone (Just leftover) (Right result)
-    {-# INLINE push #-}
-    close _ = return $ Left "too few bytes\nFrom:\tsinkGet\n\n"
-    {-# INLINE close #-}
+    loop state = await >>= maybe closed handle
+      where
+        handle bs = case state bs of
+            S.Fail message -> return $ Left message
+            S.Partial state' -> loop state'
+            S.Done result leftovers -> do
+                leftover leftovers
+                return $ Right result
+    {-# INLINE loop #-}
 
-
--- | Generalized version of 'Data.Conduit.Util.sinkState'
-sinkState
-    :: Monad m
-    => state -- ^ initial state
-    -> (state -> input -> m (SinkStateResult state input output)) -- ^ push
-    -> (state -> m output) -- ^ Close. Note that the state is not returned, as it is not needed.
-    -> GLSink input m output
-sinkState state0 push0 close0 =
-    NeedInput (push state0) (\_ -> close state0)
-  where
-    push state input = PipeM
-        (do
-            res <- state `seq` push0 state input
-            case res of
-                StateProcessing state' -> return $ NeedInput (push state') (\_ -> close state')
-                StateDone mleftover output -> return $ maybe id (flip Leftover) mleftover $ Done output)
-
-    close = lift . close0
+    closed = return $ Left "too few bytes\nFrom:\tsinkGet\n\n"
+    {-# INLINE closed #-}
+{-# INLINE sinkGet #-}
