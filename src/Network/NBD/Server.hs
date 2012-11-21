@@ -90,7 +90,7 @@ negotiateNewstyle exports = do
                     else handleList cmd
                 handleOptions
                     
-            ExportName -> return $ decodeUtf8 $ BS.concat $ LBS.toChunks dat
+            ExportName -> return $ decodeUtf8 $ LBS.toStrict dat
 
     handleAbort = liftIO $ throwIO ClientAbort
     {-# INLINE handleAbort #-}
