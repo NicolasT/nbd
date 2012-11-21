@@ -25,6 +25,7 @@ module Network.NBD.Server (
     , getCommand
     , sendReply
     , sendReplyData
+    , sendReplyData'
     , sendError
 
     , Command(..)
@@ -177,13 +178,26 @@ sendReplyData :: Monad m => Handle
                          -> LBS.ByteString
                          -> Pipe l i BS.ByteString u m ()
 sendReplyData h d =
+    sendReplyData' h $ \header ->
     -- I'd love to use sourcePutLazy here, but that ruins performance
     sourcePut $ do
+        putByteString header
+        putLazyByteString d
+{-# INLINE sendReplyData #-}
+
+-- | Construct a reply to the client indicating success for the given handle.
+-- The reply bytes will be passed to the given action, which is responsible
+-- of pushing this data to the client, maybe followed by more data (e.g.
+-- when replying to a 'Network.NBD.Types.Read' command).
+sendReplyData' :: Monad m => Handle
+                          -> (BS.ByteString -> m ())
+                          -> m ()
+sendReplyData' h a =
+    a $ runPut $ do
         putWord32be nBD_REPLY_MAGIC
         putWord32be 0
         put h
-        putLazyByteString d
-{-# INLINE sendReplyData #-}
+{-# INLINE sendReplyData' #-}
 
 -- | Send an error reply to the client for the given handle
 sendError :: Monad m => Handle
