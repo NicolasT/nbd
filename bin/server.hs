@@ -25,7 +25,7 @@ module Main (
 import Data.Bits
 
 import Data.Conduit hiding (Flush)
-import Data.Conduit.Network hiding (runTCPServer)
+import Data.Conduit.Network hiding (ServerSettings, runTCPServer)
 
 import qualified Data.Map as Map
 
@@ -40,7 +40,7 @@ import Data.Typeable (Typeable)
 
 import Control.Concurrent (forkIO, threadDelay)
 
-import Control.Exception.Base (Exception, bracket, finally, throwIO, try)
+import Control.Exception.Base (Exception, bracket, bracketOnError, finally, throwIO, try)
 import GHC.IO.Exception (ioe_errno)
 
 import Control.Monad (forever, forM, void, when)
@@ -166,27 +166,39 @@ application exports dat = nbdAppSource dat $= handler $$ nbdAppSink dat
     flags = [HasFlags, SendFlush, SendFua, SendTrim]
 
 
--- Mainly a copy from network-conduit, so we can access the socket itself
-runTCPServer :: (MonadBaseControl IO m, MonadIO m) => ServerSettings m
-                                                   -> (ServerSettings m -> (Socket, NS.SockAddr) -> m (m ()))
-                                                   -> m ()
-runTCPServer settings mkApp = control $ \run -> bracket
-    (liftIO $ bindPort port host)
+data ServerSettings = TCPServerSettings Int HostPreference
+                    | UNIXServerSettings String
+
+runServer :: (MonadBaseControl IO m, MonadIO m) => ServerSettings
+                                                -> ((Socket, NS.SockAddr) -> m (m ()))
+                                                -> m ()
+runServer settings mkApp = control $ \run -> bracket
+    (liftIO doBind)
     (liftIO . NS.sClose)
-    (\socket -> run $ do
-        afterBind socket
-        forever $ serve socket)
+    (run . forever . serve)
   where
     serve lsocket = do
         s@(socket, _) <- liftIO $ acceptSafe lsocket
-        app <- mkApp settings s
+        app <- mkApp s
         let app' run = void $ run app
             appClose run = app' run `finally` NS.sClose socket
         control $ \run -> forkIO (appClose run) >> run (return ())
-    port = serverPort settings
-    host = serverHost settings
-    afterBind = serverAfterBind settings
 
+    doBind = case settings of
+        TCPServerSettings port host -> bindPort port host
+        UNIXServerSettings path -> bindUNIX path
+
+    bindUNIX path = do
+        sock <- bracketOnError
+            (NS.socket NS.AF_UNIX NS.Stream 0)
+            NS.close
+            (\sock -> do
+                NS.setSocketOption sock NS.ReuseAddr 1
+                NS.bindSocket sock (NS.SockAddrUnix path)
+                return sock
+            )
+        NS.listen sock (max 2048 NS.maxListenQueue)
+        return sock
 
 data NBDAppData m = NBDAppData { nbdAppSource :: Source m BS.ByteString
                                , nbdAppSink :: Sink BS.ByteString m ()
@@ -213,11 +225,11 @@ main = runResourceT $ do
 
     let exportsMap = Map.fromList exports
 
-    void $ resourceForkIO $ runTCPServer settings (mkApp exportsMap)
+    void $ resourceForkIO $ runServer settings (mkApp exportsMap)
     forever $ liftIO $ threadDelay 10000000
   where
-    settings = serverSettings nBD_DEFAULT_PORT HostAny
-    mkApp exports _ (sock, addr) =
+    settings = UNIXServerSettings "nbdsock"
+    mkApp exports (sock, addr) =
         return $ application exports NBDAppData { nbdAppSource = sourceSocket sock
                                                 , nbdAppSink = sinkSocket sock
                                                 , nbdAppSockAddr = addr
