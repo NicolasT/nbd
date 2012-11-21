@@ -32,7 +32,7 @@ Library
                        transformers,
                        text,
                        cereal,
-                       bytestring,
+                       bytestring >= 0.10,
                        conduit >= 0.5
   Hs-Source-Dirs:      src
   Ghc-Options:         -Wall -fwarn-incomplete-patterns -O3
