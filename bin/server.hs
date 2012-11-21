@@ -46,7 +46,7 @@ import GHC.IO.Exception (ioe_errno)
 import Control.Monad (forever, forM, void, when)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 
-import Foreign.C.Error (Errno(Errno), eINVAL, getErrno)
+import Foreign.C.Error (Errno(Errno), eINVAL, eOPNOTSUPP, getErrno)
 
 import System.IO (hPutStrLn, stderr)
 import System.Exit (exitFailure)
@@ -160,7 +160,7 @@ application exports dat = nbdAppSource dat $= handler $$ nbdAppSink dat
                         (\() -> sendReply h)
                     return Loop
                 UnknownCommand{} -> do
-                    liftIO $ putStrLn $ "Unknown command: " ++ show req
+                    sendError (unknownCommandHandle req) eOPNOTSUPP
                     return Loop
 
     flags = [HasFlags, SendFlush, SendFua, SendTrim]
