@@ -44,19 +44,19 @@ import Foreign.Ptr (Ptr)
 import Foreign.C.Error (throwErrnoIfMinus1_, throwErrnoIfMinus1Retry, throwErrnoIfMinus1Retry_)
 import Foreign.C.Types (CInt(..), CChar(..), CSize(..))
 
-foreign import ccall "fsync"
+foreign import ccall unsafe "unistd.h fsync"
     c_fsync :: CInt -> IO CInt
 
 fsync :: Fd -> IO ()
 fsync (Fd fd) = throwErrnoIfMinus1_ "fsync" $ c_fsync fd
 
-foreign import ccall "fdatasync"
+foreign import ccall unsafe "unistd.h fdatasync"
     c_fdatasync :: CInt -> IO CInt
 
 fdatasync :: Fd -> IO ()
 fdatasync (Fd fd) = throwErrnoIfMinus1_ "fdatasync" $ c_fdatasync fd
 
-foreign import ccall "pwrite"
+foreign import ccall unsafe "unistd.h pwrite"
     c_pwrite :: CInt -> Ptr CChar -> CSize -> COff -> IO CSsize
 
 pwrite :: Fd -> BS.ByteString -> COff -> IO CSsize
@@ -80,7 +80,7 @@ pwriteAllLazy fd bs = loop (LBS.toChunks bs)
         (x:xs) -> pwriteAll fd x off >> loop xs (off + fromIntegral (BS.length x))
 
 
-foreign import ccall "fallocate"
+foreign import ccall unsafe "fcntl.h fallocate"
     c_fallocate :: CInt -> CInt -> COff -> COff -> IO CInt
 
 fALLOC_FL_KEEP_SIZE :: CInt
