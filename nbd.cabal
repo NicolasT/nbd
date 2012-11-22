@@ -23,17 +23,25 @@ Library
   Exposed-Modules:     Network.NBD
                        Network.NBD.Client
                        Network.NBD.Server
+                       Network.NBD.Server.Simple
   Other-Modules:       Network.NBD.Types
                        Network.NBD.Utils
                        Network.NBD.Constants
                        Data.Conduit.Cereal
+                       Data.Conduit.Network.Basic
   Build-Depends:       base >= 4 && < 5,
                        mtl,
                        transformers,
+                       containers,
                        text,
                        cereal,
                        bytestring >= 0.10,
-                       conduit >= 0.5
+                       network,
+                       conduit >= 0.5,
+                       network-conduit >= 0.6,
+                       resourcet,
+                       monad-control,
+                       simple-sendfile
   Hs-Source-Dirs:      src
   Ghc-Options:         -Wall -fwarn-incomplete-patterns -O3
 
