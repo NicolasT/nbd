@@ -48,7 +48,6 @@ import System.Posix.Types (Fd)
 
 import System.Posix.IO.Extra (fALLOC_FL_PUNCH_HOLE, fALLOC_FL_KEEP_SIZE, fallocate, fdatasync, fsync, pwriteAllLazy)
 
-import Network.NBD
 import Network.NBD.Server.Simple
 
 data Export = Export { exportHandle :: Fd
@@ -82,15 +81,16 @@ main = runResourceT $ do
     settings = UNIXServerSettings "nbdsock"
     exportMaker exportsMap _ exportName = case Map.lookup exportName exportsMap of
         Nothing -> return Nothing
-        Just e -> return $ Just (exportSize e, ExportHandler { handleRead = Just $ handleRead' e
-                                                             , handleWrite = Just $ handleWrite' e
-                                                             , handleFlush = Just $ handleFlush' e 
-                                                             , handleTrim = Just $ handleTrim' e 
-                                                             , handleDisconnect = Nothing
-                                                             , handleUnknownCommand = Nothing
-                                                             , handleHasFUA = True
-                                                             , handleIsRotational = False
-                                                             })
+        Just e -> return $ Just ExportHandler { handleRead = handleRead' e
+                                              , handleWrite = Just $ handleWrite' e
+                                              , handleFlush = Just $ handleFlush' e 
+                                              , handleTrim = Just $ handleTrim' e 
+                                              , handleDisconnect = Nothing
+                                              , handleUnknownCommand = Nothing
+                                              , handleSize = exportSize e
+                                              , handleHasFUA = True
+                                              , handleIsRotational = False
+                                              }
 
     handleRead' e o l _ = withBoundsCheck (exportSize e) o l $
         return $ OK $ Sendfile (exportHandle e) PartOfFile { rangeOffset = fromIntegral o
