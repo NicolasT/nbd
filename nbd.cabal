@@ -54,6 +54,7 @@ Executable nbd-demo-server
                        conduit >= 0.5,
                        network-conduit >= 0.6,
                        simple-sendfile,
+                       ekg,
                        nbd
   Hs-Source-Dirs:      bin
   Ghc-Options:         -Wall -fwarn-incomplete-patterns -O3 -rtsopts -threaded

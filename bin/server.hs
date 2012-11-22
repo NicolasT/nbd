@@ -17,7 +17,7 @@
  - Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  -}
 
-{-# LANGUAGE DeriveDataTypeable, ScopedTypeVariables, FlexibleContexts #-}
+{-# LANGUAGE DeriveDataTypeable, ScopedTypeVariables, FlexibleContexts, OverloadedStrings #-}
 module Main (
       main
     ) where
@@ -63,6 +63,9 @@ import Network.Socket (Socket)
 import qualified Network.Socket as NS
 
 import Network.Sendfile (FileRange(..), sendfileFdWithHeader)
+
+import System.Remote.Monitoring as EKG
+import System.Remote.Label as EKG.Label
 
 import Network.NBD as N
 import Network.NBD.Server as S
@@ -168,6 +171,7 @@ application exports dat = nbdAppSource dat $= handler $$ nbdAppSink dat
 
 data ServerSettings = TCPServerSettings Int HostPreference
                     | UNIXServerSettings String
+  deriving (Show)
 
 runServer :: (MonadBaseControl IO m, MonadIO m) => ServerSettings
                                                 -> ((Socket, NS.SockAddr) -> m (m ()))
@@ -208,6 +212,8 @@ data NBDAppData m = NBDAppData { nbdAppSource :: Source m BS.ByteString
 
 main :: IO ()
 main = runResourceT $ do
+    liftIO setupEKG
+
     args <- liftIO getArgs
 
     when (null args) $ liftIO $ do
@@ -235,3 +241,7 @@ main = runResourceT $ do
                                                 , nbdAppSockAddr = addr
                                                 , nbdAppSocket = sock
                                                 }
+
+    setupEKG = do
+        server <- EKG.forkServer "localhost" 8000
+        EKG.getLabel "Server" server >>= flip EKG.Label.set (Text.pack $ show settings) 
