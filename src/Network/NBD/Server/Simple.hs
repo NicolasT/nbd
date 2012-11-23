@@ -40,6 +40,7 @@ module Network.NBD.Server.Simple (
     , ExportSize
     , ExportMaker
     , ServerSettings(..)
+    , HostPreference(..)
     , nBD_DEFAULT_PORT
     , runServer
 

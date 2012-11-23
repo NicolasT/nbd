@@ -44,6 +44,7 @@ import Data.Conduit.Network hiding (Application, ServerSettings)
 
 data ServerSettings = TCPServerSettings Int HostPreference
                     | UNIXServerSettings FilePath
+  deriving (Show, Eq)
 
 type Application m = m ()
 type ApplicationBuilder m = ((Socket, NS.SockAddr) -> m (Application m))
