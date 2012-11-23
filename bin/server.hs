@@ -52,7 +52,7 @@ import System.Posix.IO.Extra (fALLOC_FL_PUNCH_HOLE, fALLOC_FL_KEEP_SIZE, falloca
 import Network.NBD.Server.Simple
 
 data Export = Export { exportHandle :: Fd
-                     , exportSize :: ExportSize
+                     , exportSize :: ByteCount
                      }
   deriving (Show)
 

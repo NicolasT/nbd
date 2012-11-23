@@ -21,9 +21,8 @@
 
 module Network.NBD.Types (
       ExportName
-    , ExportSize
-    , Offset
-    , Length
+    , ByteCount
+    , FileOffset
     , Command(..)
     , Response(..)
     , Handle(Handle)
@@ -44,17 +43,13 @@ import Control.Exception.Base
 
 import Foreign.C.Error (Errno(Errno))
 
+import System.Posix.Types (ByteCount, FileOffset)
+
 import Network.NBD.Constants
 
 -- | A type synonym for export names
 -- In line with the protocol spec, this will be UTF-8 encoded
 type ExportName = Text
--- | A type synonym for the size of a single export
-type ExportSize = Word64
--- | A type synonym for offset values passed in commands
-type Offset = Word64
--- | A type synonym for length values passed in commands
-type Length = Word32
 
 -- | Opaque type representing a command handle sent by a client
 newtype Handle = Handle Word64
@@ -77,12 +72,12 @@ newHandle (Handle h) = Handle (h + 1)
 
 -- | Representation of a client command
 data Command = Read { readHandle :: !Handle          -- ^ Request handle
-                    , readFrom :: !Offset            -- ^ Requested offset
-                    , readLength :: !Length          -- ^ Requested length
+                    , readFrom :: !FileOffset        -- ^ Requested offset
+                    , readLength :: !ByteCount       -- ^ Requested length
                     , readFlags :: [NbdCommandFlag]  -- ^ Command flags
                     }
              | Write { writeHandle :: !Handle          -- ^ Request handle
-                     , writeFrom :: !Offset            -- ^ Write offset
+                     , writeFrom :: !FileOffset        -- ^ Write offset
                      , writeData :: LBS.ByteString     -- ^ Data
                      , writeFlags :: [NbdCommandFlag]  -- ^ Command flags
                      }
@@ -92,14 +87,14 @@ data Command = Read { readHandle :: !Handle          -- ^ Request handle
                      , flushFlags :: [NbdCommandFlag]  -- ^ Command flags
                      }
              | Trim { trimHandle :: !Handle          -- ^ Request handle
-                    , trimFrom :: !Offset            -- ^ Requested offset
-                    , trimLength :: !Length          -- ^ Requested length
+                    , trimFrom :: !FileOffset        -- ^ Requested offset
+                    , trimLength :: !ByteCount       -- ^ Requested length
                     , trimFlags :: [NbdCommandFlag]  -- ^ Command flags
                     }
              | UnknownCommand { unknownCommandId :: !Word32              -- ^ Request command number
                               , unknownCommandHandle :: !Handle          -- ^ Request handle
-                              , unknownCommandOffset :: !Offset          -- ^ Request offset
-                              , unknownCommandLength :: !Length          -- ^ Request length
+                              , unknownCommandOffset :: !FileOffset      -- ^ Request offset
+                              , unknownCommandLength :: !ByteCount       -- ^ Request length
                               , unknownCommandFlags :: [NbdCommandFlag]  -- ^ Command flags
                               }
   deriving (Show)

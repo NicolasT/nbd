@@ -32,7 +32,6 @@ module Network.NBD.Server (
     ) where
 
 import Data.Bits
-import Data.Word
 import Data.Serialize
 
 import Data.Conduit
@@ -76,7 +75,7 @@ negotiateNewstyle exports = do
         when (magic /= nBD_OPTS_MAGIC) $
             liftIO $ throwIO $ InvalidMagic "option" magic
 
-        (cmd, len) <- sinkGet' $ (,) <$> getWord32be <*> getWord32be
+        (cmd, len) <- sinkGet' $ (,) <$> getWord32be <*> (fromIntegral <$> getWord32be)
         dat <- safeRead len
 
         case toEnum $ fromIntegral cmd of
@@ -125,11 +124,11 @@ negotiateNewstyle exports = do
     {-# INLINE newstylePrelude #-}
 
 -- | After negotiation, send information about the selected export
-sendExportInformation :: Monad m => ExportSize      -- ^ Size of the selected export
+sendExportInformation :: Monad m => ByteCount       -- ^ Size of the selected export
                                  -> [NbdExportFlag] -- ^ Flags set for the export
                                  -> Pipe l i BS.ByteString u m ()
 sendExportInformation len flags = sourcePut $ do
-    putWord64be len
+    putWord64be $ fromIntegral len
     putWord16be flags'
     putByteString zeros
   where
@@ -147,8 +146,8 @@ getCommand = do
     (typ, handle, offset, len) <- sinkGet' $ do
         !typ <- getWord32be
         !handle <- Handle `fmap` get
-        !offset <- getWord64be
-        !len <- getWord32be
+        !offset <- fromIntegral `fmap` getWord64be
+        !len <- fromIntegral `fmap` getWord32be
         return (typ, handle, offset, len)
 
     let cmd = typ .&. nBD_CMD_MASK_COMMAND
@@ -210,7 +209,7 @@ sendError h (Errno e) =
         put h
 
 
-safeRead :: Monad m => Word32 -> GLSink BS.ByteString m LBS.ByteString
+safeRead :: Monad m => ByteCount -> GLSink BS.ByteString m LBS.ByteString
 safeRead len
     | len == 0 = return LBS.empty
     | otherwise = CB.take $ fromIntegral len

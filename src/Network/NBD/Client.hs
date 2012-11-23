@@ -142,7 +142,7 @@ optionList = do
         | otherwise = liftIO $ throwIO $ OptionError typ
 
 -- | Send the ExportName option to the server
-optionExportName :: MonadIO m => ExportName -> Pipe BS.ByteString BS.ByteString BS.ByteString u m (ExportSize, [NbdExportFlag])
+optionExportName :: MonadIO m => ExportName -> Pipe BS.ByteString BS.ByteString BS.ByteString u m (ByteCount, [NbdExportFlag])
 optionExportName name = do
     sendOption ExportName (encodeUtf8 name)
 
@@ -162,29 +162,29 @@ optionExportName name = do
                     (\f -> flags .&. fromEnum' f /= 0)
                     [HasFlags, ReadOnly, SendFlush, SendFua, Rotational, SendTrim]
 
-    return (len, flags')
+    return (fromIntegral len, flags')
 
   where
     expectedZeros = BS.replicate 124 0
 
 
-sendCommand :: Monad m => Word32 -> [NbdCommandFlag] -> Handle -> Offset -> Length -> LBS.ByteString -> GSource m BS.ByteString
+sendCommand :: Monad m => Word32 -> [NbdCommandFlag] -> Handle -> FileOffset -> ByteCount -> LBS.ByteString -> GSource m BS.ByteString
 sendCommand command flags handle offset len dat = sourcePut $ do
     putWord32be nBD_REQUEST_MAGIC
     putWord32be command'
     put handle
-    putWord64be offset
-    putWord32be len
+    putWord64be $ fromIntegral offset
+    putWord32be $ fromIntegral len
     putLazyByteString dat
   where
     command' = foldr (\f a -> a .|. fromEnum' f) command flags
 
 -- | Send a Read command to the server
-read :: Monad m => Handle -> [NbdCommandFlag] -> Offset -> Length -> GSource m BS.ByteString
+read :: Monad m => Handle -> [NbdCommandFlag] -> FileOffset -> ByteCount -> GSource m BS.ByteString
 read handle flags offset len = sendCommand 0 flags handle offset len LBS.empty
 
 -- | Send a Write command to the server
-write :: Monad m => Handle -> [NbdCommandFlag] -> Offset -> Length -> LBS.ByteString -> GSource m BS.ByteString
+write :: Monad m => Handle -> [NbdCommandFlag] -> FileOffset -> ByteCount -> LBS.ByteString -> GSource m BS.ByteString
 write handle flags = sendCommand 1 flags handle
 
 -- | Send a Disconnect command to the server
@@ -196,13 +196,13 @@ flush :: Monad m => Handle -> [NbdCommandFlag] -> GSource m BS.ByteString
 flush handle flags = sendCommand 3 flags handle 0 0 LBS.empty
 
 -- | Send a Trim command to the server
-trim :: Monad m => Handle -> [NbdCommandFlag] -> Offset -> Length -> GSource m BS.ByteString
+trim :: Monad m => Handle -> [NbdCommandFlag] -> FileOffset -> ByteCount -> GSource m BS.ByteString
 trim handle flags offset len = sendCommand 4 flags handle offset len LBS.empty
 
 -- | Retrieve a single Response from the server. The passed function should
 -- return the expected payload size (in case of a Read request), or
 -- Nothing, based on the handle.
-getResponse :: MonadIO m => (Handle -> Maybe Length) -> GLSink BS.ByteString m Response
+getResponse :: MonadIO m => (Handle -> Maybe ByteCount) -> GLSink BS.ByteString m Response
 getResponse getSize = do
     magic <- sinkGet' getWord32be
     when (magic /= nBD_REPLY_MAGIC) $

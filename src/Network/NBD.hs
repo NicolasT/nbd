@@ -23,13 +23,12 @@ module Network.NBD (
     , NbdCommandFlag(..)
 
     , ExportName
-    , ExportSize
-    , Offset
-    , Length
+    , ByteCount
+    , FileOffset
     , ProtocolException(..)
 
     , Handle
     ) where
 
 import Network.NBD.Constants (nBD_DEFAULT_PORT, NbdExportFlag(..), NbdCommandFlag(..))
-import Network.NBD.Types (ExportName, ExportSize, Handle, Offset, Length, ProtocolException(..))
+import Network.NBD.Types (ExportName, Handle, ByteCount, FileOffset, ProtocolException(..))

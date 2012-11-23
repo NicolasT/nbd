@@ -26,7 +26,7 @@ module Network.NBD.Server.Simple (
 
     -- * Action handlers
     , ExportHandler(..)
-    , Offset, Length
+    , FileOffset, ByteCount
     , NbdCommandFlag(..)
     , Flags
     , ReadHandler
@@ -37,7 +37,6 @@ module Network.NBD.Server.Simple (
     , CommandId, UnknownCommandHandler
 
     -- * Server execution
-    , ExportSize
     , ExportMaker
     , ServerSettings(..)
     , HostPreference(..)
@@ -78,7 +77,7 @@ import Foreign.C.Error (Errno(Errno), eINVAL, eOPNOTSUPP, getErrno)
 
 import System.Posix.Types (Fd)
 
-import Network.NBD (ExportName, ExportSize, Handle, Length, Offset, NbdCommandFlag(..), NbdExportFlag(..), nBD_DEFAULT_PORT)
+import Network.NBD (ExportName, Handle, ByteCount, FileOffset, NbdCommandFlag(..), NbdExportFlag(..), nBD_DEFAULT_PORT)
 import Network.NBD.Server
 
 data NbdAppData m = NbdAppData { nbdAppSource :: Source m BS.ByteString
@@ -101,19 +100,19 @@ type CommandId = Word32
 type Flags = [NbdCommandFlag]
 
 -- | 'Read' request handler prototype
-type ReadHandler = Offset -> Length -> Flags -> IO (Response ReadResponse)
+type ReadHandler = FileOffset -> ByteCount -> Flags -> IO (Response ReadResponse)
 -- | 'Write' request handler prototype
-type WriteHandler = Offset -> LBS.ByteString -> Flags -> IO (Response ())
+type WriteHandler = FileOffset -> LBS.ByteString -> Flags -> IO (Response ())
 -- | 'Flush' request handler prototype
 type FlushHandler = Flags -> IO (Response ())
 -- | 'Trim' request handler prototype
-type TrimHandler = Offset -> Length -> Flags -> IO (Response ())
+type TrimHandler = FileOffset -> ByteCount -> Flags -> IO (Response ())
 -- | Disconnect request handler prototype. Note the connection will be
 -- closed by the server when receiving a 'Disconnect' request, after
 -- executing any given handler, even if the handler throws an 'Exception'.
 type DisconnectHandler = Flags -> IO ()
 -- | Unknown request handler prototype
-type UnknownCommandHandler = CommandId -> Offset -> Length -> Flags -> IO (Response ())
+type UnknownCommandHandler = CommandId -> FileOffset -> ByteCount -> Flags -> IO (Response ())
 
 -- | Action vtable to handle client requests. Any 'Maybe' field can be set
 -- to 'Nothing', which implies the given feature is not available on the
@@ -125,7 +124,7 @@ data ExportHandler = ExportHandler { handleRead :: ReadHandler -- ^ Handle a 'Re
                                    , handleTrim :: Maybe TrimHandler -- ^ Handle a 'Trim' request
                                    , handleDisconnect :: Maybe DisconnectHandler -- ^ Action to run prior to disconnecting a client due to a 'Disconnect' request
                                    , handleUnknownCommand :: Maybe UnknownCommandHandler -- ^ Handle an unknown request
-                                   , handleSize :: ExportSize -- ^ Size of the export
+                                   , handleSize :: ByteCount -- ^ Size of the export
                                    , handleHasFUA :: Bool -- ^ Server supports the 'ForceUnitAccess' request flag
                                    , handleIsRotational :: Bool -- ^ Server exposes a rotational device (which might impact the client IO scheduler)
                                    }
@@ -279,12 +278,12 @@ runServer settings exportNames exportMaker =
 -- | Utility action to validate request boundaries. This action will return
 -- 'eINVAL' to the client if an out-of-bounds request was received
 withBoundsCheck :: Monad m
-                => ExportSize -- ^ Size of the export we're dealing with
-                -> Offset -- ^ Offset of the request
-                -> Length -- ^ Length of the request
+                => ByteCount -- ^ Size of the export we're dealing with
+                -> FileOffset -- ^ Offset of the request
+                -> ByteCount -- ^ Length of the request
                 -> m (Response a) -- ^ Action to execute if request is within bounds
                 -> m (Response a)
 withBoundsCheck size o l act =
-    if (o >= maxBound - fromIntegral l) || (o + fromIntegral l > size)
+    if (o >= maxBound - fromIntegral l) || (fromIntegral o + l > size)
         then return (Error eINVAL)
         else act
