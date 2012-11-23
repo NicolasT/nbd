@@ -17,7 +17,7 @@
  - Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  -}
 
-{-# LANGUAGE DeriveDataTypeable, ScopedTypeVariables, FlexibleContexts #-}
+{-# LANGUAGE PackageImports #-}
 module Main (
       main
     ) where
@@ -26,6 +26,7 @@ import Data.Bits
 
 import Data.Conduit
 
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map as Map
 import qualified Data.Text as Text
@@ -40,11 +41,12 @@ import System.Exit (exitFailure)
 import System.Environment (getArgs, getProgName)
 
 import System.IO (hPutStrLn, stderr)
+import System.IO.Error (ioeSetErrorString, mkIOError, eofErrorType)
 
 import System.Posix.Files (fileSize, getFdStatus)
 import System.Posix.IO (closeFd, defaultFileFlags, openFd)
 import qualified System.Posix.IO as IO
-import System.Posix.IO.ByteString.Lazy (fdPread)
+import "unix-bytestring" System.Posix.IO.ByteString (fdPread)
 import System.Posix.Types (Fd)
 
 import System.Posix.IO.Extra (fALLOC_FL_PUNCH_HOLE, fALLOC_FL_KEEP_SIZE, fallocate, fdatasync, fsync, pwriteAllLazy)
@@ -94,7 +96,7 @@ main = runResourceT $ do
                                               }
 
     handleRead' e o l _ = withBoundsCheck (exportSize e) o l $
-        (OK . Data) `fmap` fdPread (exportHandle e) (fromIntegral l) (fromIntegral o)
+        (OK . Data) `fmap` pread (exportHandle e) (fromIntegral l) (fromIntegral o)
 
     handleWrite' e o d f = withBoundsCheck (exportSize e) o (fromIntegral $ LBS.length d) $ do
         pwriteAllLazy (exportHandle e) d (fromIntegral o)
@@ -112,3 +114,15 @@ main = runResourceT $ do
         when (ForceUnitAccess `elem` f) $
             fdatasync (exportHandle e)
         return $ OK ()
+
+    pread :: Fd -> ByteCount -> FileOffset -> IO LBS.ByteString
+    pread fd = loop []
+      where
+        loop acc l o
+            | l == 0 = return $ LBS.fromChunks $ reverse acc
+            | otherwise = do
+                bs <- fdPread fd l o
+                let len = BS.length bs
+                when (len == 0) $
+                    ioError $ ioeSetErrorString (mkIOError eofErrorType "pread" Nothing Nothing) "EOF"
+                loop (bs : acc) (l - fromIntegral len) (o + fromIntegral len)
