@@ -44,6 +44,7 @@ import System.IO (hPutStrLn, stderr)
 import System.Posix.Files (fileSize, getFdStatus)
 import System.Posix.IO (closeFd, defaultFileFlags, openFd)
 import qualified System.Posix.IO as IO
+import System.Posix.IO.ByteString.Lazy (fdPread)
 import System.Posix.Types (Fd)
 
 import System.Posix.IO.Extra (fALLOC_FL_PUNCH_HOLE, fALLOC_FL_KEEP_SIZE, fallocate, fdatasync, fsync, pwriteAllLazy)
@@ -93,8 +94,7 @@ main = runResourceT $ do
                                               }
 
     handleRead' e o l _ = withBoundsCheck (exportSize e) o l $
-        return $ OK $ Sendfile (exportHandle e) PartOfFile { rangeOffset = fromIntegral o
-                                                           , rangeLength = fromIntegral l}
+        (OK . Data) `fmap` fdPread (exportHandle e) (fromIntegral l) (fromIntegral o)
 
     handleWrite' e o d f = withBoundsCheck (exportSize e) o (fromIntegral $ LBS.length d) $ do
         pwriteAllLazy (exportHandle e) d (fromIntegral o)
